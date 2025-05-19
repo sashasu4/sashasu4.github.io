@@ -1,0 +1,346 @@
+<script type="text/javascript">
+        var gk_isXlsx = false;
+        var gk_xlsxFileLookup = {};
+        var gk_fileData = {};
+        function filledCell(cell) {
+          return cell !== '' && cell != null;
+        }
+        function loadFileData(filename) {
+        if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
+            try {
+                var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
+                var firstSheetName = workbook.SheetNames[0];
+                var worksheet = workbook.Sheets[firstSheetName];
+
+                // Convert sheet to JSON to filter blank rows
+                var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
+                // Filter out blank rows (rows where all cells are empty, null, or undefined)
+                var filteredData = jsonData.filter(row => row.some(filledCell));
+
+                // Heuristic to find the header row by ignoring rows with fewer filled cells than the next row
+                var headerRowIndex = filteredData.findIndex((row, index) =>
+                  row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
+                );
+                // Fallback
+                if (headerRowIndex === -1 || headerRowIndex > 25) {
+                  headerRowIndex = 0;
+                }
+
+                // Convert filtered JSON back to CSV
+                var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex)); // Create a new sheet from filtered array of arrays
+                csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
+                return csv;
+            } catch (e) {
+                console.error(e);
+                return "";
+            }
+        }
+        return gk_fileData[filename] || "";
+        }
+        </script><!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Калькулятор выбора технологии производства БПЛА</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <h1>Калькулятор выбора технологии производства БПЛА</h1>
+        
+        <div class="tab">
+            <button class="tablinks active" onclick="openTab(event, 'Comparison')">Сравнение подходов</button>
+            <button class="tablinks" onclick="openTab(event, 'AdditiveSelection')">Выбор аддитивной технологии</button>
+            <button class="tablinks" onclick="openTab(event, 'Info')">Информация и метрики</button>
+        </div>
+
+        <!-- Вкладка 1: Сравнение аддитивного и традиционного производства -->
+        <div id="Comparison" class="tabcontent" style="display: block;">
+            <h2>Сравнение аддитивного и традиционного производства</h2>
+            <form id="comparisonForm">
+                <div class="input-group">
+                    <label for="tTraditional">Время традиционного производства (дни):</label>
+                    <input type="number" id="tTraditional" min="1" value="30" required>
+                </div>
+                <div class="input-group">
+                    <label for="tAM">Время аддитивного производства (дни):</label>
+                    <input type="number" id="tAM" min="1" value="5" required>
+                </div>
+                <div class="input-group">
+                    <label for="cFlex">Стоимость перенастройки (у.е.):</label>
+                    <input type="number" id="cFlex" min="0" value="10000" required>
+                </div>
+                <div class="input-group">
+                    <label for="cTotal">Общая стоимость производства (у.е.):</label>
+                    <input type="number" id="cTotal" min="1" value="50000" required>
+                </div>
+                <div class="input-group">
+                    <label for="wasteAM">Отходы аддитивного производства (кг):</label>
+                    <input type="number" id="wasteAM" min="0" value="0.5" step="0.1" required>
+                </div>
+                <div class="input-group">
+                    <label for="wasteTraditional">Отходы традиционного производства (кг):</label>
+                    <input type="number" id="wasteTraditional" min="0" value="2.5" step="0.1" required>
+                </div>
+                <div class="button-group">
+                    <button type="button" onclick="calculateComparison()" class="calculate-btn">Рассчитать</button>
+                    <button type="button" onclick="resetForm('comparisonForm')" class="reset-btn">Сбросить</button>
+                </div>
+            </form>
+
+            <div id="comparisonResult" class="result-section hidden">
+                <h3>Результат сравнения:</h3>
+                <p id="efficiencyValue"></p>
+                <p id="efficiencyInterpretation"></p>
+                <h3>Сравнительная таблица:</h3>
+                <table class="tech-comparison">
+                    <thead>
+                        <tr>
+                            <th>Показатель</th>
+                            <th>Аддитивное производство</th>
+                            <th>Традиционное производство</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td data-label="Показатель">Время (дни)</td>
+                            <td data-label="Аддитивное" id="compTimeAM"></td>
+                            <td data-label="Традиционное" id="compTimeTraditional"></td>
+                        </tr>
+                        <tr>
+                            <td data-label="Показатель">Отходы (кг)</td>
+                            <td data-label="Аддитивное" id="compWasteAM"></td>
+                            <td data-label="Традиционное" id="compWasteTraditional"></td>
+                        </tr>
+                        <tr>
+                            <td data-label="Показатель">Себестоимость (у.е.)</td>
+                            <td data-label="Аддитивное" id="compCostAM"></td>
+                            <td data-label="Традиционное" id="compCostTraditional"></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Вкладка 2: Выбор аддитивной технологии -->
+        <div id="AdditiveSelection" class="tabcontent">
+            <h2>Выбор аддитивной технологии</h2>
+            <form id="additiveForm">
+                <div class="input-group">
+                    <label for="productionVolume">Объем производства (шт.):</label>
+                    <input type="number" id="productionVolume" min="1" value="10" required>
+                </div>
+                <div class="input-group">
+                    <label for="timeConstraint">Срок производства (дни):</label>
+                    <input type="number" id="timeConstraint" min="1" value="7" required>
+                </div>
+                <div class="input-group">
+                    <label for="budget">Бюджет:</label>
+                    <select id="budget" required>
+                        <option value="low">Низкий</option>
+                        <option value="medium" selected>Средний</option>
+                        <option value="high">Высокий</option>
+                    </select>
+                </div>
+                <div class="input-group">
+                    <label for="material">Материал:</label>
+                    <select id="material" required>
+                        <option value="plastic">Пластик (PLA, ABS)</option>
+                        <option value="nylon">Нейлон (PA12)</option>
+                        <option value="metal">Металл (титан, алюминий)</option>
+                    </select>
+                </div>
+                <div class="input-group">
+                    <label for="complexity">Сложность геометрии:</label>
+                    <select id="complexity" required>
+                        <option value="low">Простая</option>
+                        <option value="medium" selected>Средняя</option>
+                        <option value="high">Высокая</option>
+                    </select>
+                </div>
+                <div class="input-group">
+                    <label for="energy">Энергопотребление (приоритет):</label>
+                    <select id="energy" required>
+                        <option value="low">Низкий</option>
+                        <option value="medium" selected>Средний</option>
+                        <option value="high">Высокий</option>
+                    </select>
+                </div>
+                <div class="input-group">
+                    <label>Веса критериев AHP (0–1, сумма = 1):</label>
+                    <div class="ahp-weights">
+                        <div>
+                            <label for="weightSpeed">Скорость:</label>
+                            <input type="number" id="weightSpeed" min="0" max="1" step="0.01" value="0.25">
+                        </div>
+                        <div>
+                            <label for="weightCost">Себестоимость:</label>
+                            <input type="number" id="weightCost" min="0" max="1" step="0.01" value="0.20">
+                        </div>
+                        <div>
+                            <label for="weightEco">Экологичность:</label>
+                            <input type="number" id="weightEco" min="0" max="1" step="0.01" value="0.15">
+                        </div>
+                        <div>
+                            <label for="weightMech">Мех. свойства:</label>
+                            <input type="number" id="weightMech" min="0" max="1" step="0.01" value="0.20">
+                        </div>
+                        <div>
+                            <label for="weightGeom">Сложность геом.:</label>
+                            <input type="number" id="weightGeom" min="0" max="1" step="0.01" value="0.15">
+                        </div>
+                        <div>
+                            <label for="weightEnergy">Энергопотребление:</label>
+                            <input type="number" id="weightEnergy" min="0" max="1" step="0.01" value="0.05">
+                        </div>
+                    </div>
+                </div>
+                <div class="button-group">
+                    <button type="button" onclick="calculateAdditive()" class="calculate-btn">Рассчитать</button>
+                    <button type="button" onclick="resetForm('additiveForm')" class="reset-btn">Сбросить</button>
+                </div>
+            </form>
+
+            <div id="additiveResult" class="result-section hidden">
+                <h3>Рекомендуемая технология:</h3>
+                <p class="recommended-tech" id="recommendedTech"></p>
+                <p id="techExplanation"></p>
+                <h3>Веса критериев (AHP):</h3>
+                <p id="criteriaWeights"></p>
+                <h3>Альтернативные варианты:</h3>
+                <div id="alternatives"></div>
+            </div>
+        </div>
+
+        <!-- Вкладка 3: Информация и метрики -->
+        <div id="Info" class="tabcontent">
+            <h2>Информация и метрики</h2>
+            <h3>Метрики КПЭ</h3>
+            <table class="tech-comparison">
+                <thead>
+                    <tr>
+                        <th>Группа</th>
+                        <th>Метрика</th>
+                        <th>Формула/Описание</th>
+                        <th>Целевое значение</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td data-label="Группа">Технические</td>
+                        <td data-label="Метрика">Точность размеров (мм)</td>
+                        <td data-label="Формула">Отклонение от CAD-модели</td>
+                        <td data-label="Цель">±0.1 мм</td>
+                    </tr>
+                    <tr>
+                        <td data-label="Группа">Экономические</td>
+                        <td data-label="Метрика">Себестоимость изделия (у.е.)</td>
+                        <td data-label="Формула">C = C<sub>мат</sub> + C<sub>энер</sub> + C<sub>труд</sub></td>
+                        <td data-label="Цель">< $100</td>
+                    </tr>
+                    <tr>
+                        <td data-label="Группа">Экологические</td>
+                        <td data-label="Метрика">Доля отходов (%)</td>
+                        <td data-label="Формула">W<sub>отх</sub> = M<sub>отх</sub> / M<sub>всего</sub> × 100</td>
+                        <td data-label="Цель">< 10%</td>
+                    </tr>
+                    <tr>
+                        <td data-label="Группа">Технические</td>
+                        <td data-label="Метрика">Коэффициент автоматизации</td>
+                        <td data-label="Формула">K<sub>ef</sub> = (Ψ<sub>раб</sub> × E) / V<sub>год</sub></td>
+                        <td data-label="Цель">0.8–1.0</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h3>Формулы</h3>
+            <div class="formula">
+                K<sub>ef</sub> = (Ψ<sub>раб</sub> × E) / V<sub>год</sub>
+                <br>Где:
+                <br>Ψ<sub>раб</sub> — фонд рабочих часов оборудования (ч/год),
+                <br>E — эффективность операций (0–1),
+                <br>V<sub>год</sub> — объем годного выпуска (шт.).
+            </div>
+            <div class="formula">
+                W<sub>отх</sub> = M<sub>отх</sub> / M<sub>всего</sub> × 100
+                <br>Где:
+                <br>M<sub>отх</sub> — масса отходов (кг),
+                <br>M<sub>всего</sub> — общая масса материала (кг).
+            </div>
+            <div class="formula">
+                C = C<sub>мат</sub> + C<sub>энер</sub> + C<sub>труд</sub>
+                <br>Где:
+                <br>C<sub>мат</sub> — стоимость материалов (у.е.),
+                <br>C<sub>энер</sub> — стоимость энергии (у.е.),
+                <br>C<sub>труд</sub> — стоимость труда (у.е.).
+            </div>
+
+            <h3>Пример расчета</h3>
+            <p>Для корпуса БПЛА с массой материала 1 кг, отходами 0.1 кг, фондом рабочих часов 8000 ч/год, эффективностью 0.85 и выпуском 1000 шт.:</p>
+            <ul>
+                <li>Доля отходов: W<sub>отх</sub> = 0.1 / 1 × 100 = 10%</li>
+                <li>Коэффициент автоматизации: K<sub>ef</sub> = (8000 × 0.85) / 1000 = 6.8 (нормализовать до 0–1, если требуется)</li>
+                <li>Себестоимость: C = 20 (материалы) + 10 (энергия) + 20 (труд) = 50 у.е.</li>
+            </ul>
+
+            <h3>Сравнение технологий</h3>
+            <table class="tech-comparison">
+                <thead>
+                    <tr>
+                        <th>Технология</th>
+                        <th>Материалы</th>
+                        <th>Скорость</th>
+                        <th>Точность</th>
+                        <th>Стоимость</th>
+                        <th>Применение</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td data-label="Технология">FDM</td>
+                        <td data-label="Материалы">PLA, ABS</td>
+                        <td data-label="Скорость">Высокая</td>
+                        <td data-label="Точность">±0.5 мм</td>
+                        <td data-label="Стоимость">Низкая</td>
+                        <td data-label="Применение">Прототипы</td>
+                    </tr>
+                    <tr>
+                        <td data-label="Технология">SLA</td>
+                        <td data-label="Материалы">Фотополимеры</td>
+                        <td data-label="Скорость">Средняя</td>
+                        <td data-label="Точность">±0.05 мм</td>
+                        <td data-label="Стоимость">Средняя</td>
+                        <td data-label="Применение">Мелкие детали</td>
+                    </tr>
+                    <tr>
+                        <td data-label="Технология">SLS</td>
+                        <td data-label="Материалы">Нейлон</td>
+                        <td data-label="Скорость">Средняя</td>
+                        <td data-label="Точность">±0.1 мм</td>
+                        <td data-label="Стоимость">Средняя</td>
+                        <td data-label="Применение">Несущие элементы</td>
+                    </tr>
+                    <tr>
+                        <td data-label="Технология">DMLS</td>
+                        <td data-label="Материалы">Металлы</td>
+                        <td data-label="Скорость">Низкая</td>
+                        <td data-label="Точность">±0.02 мм</td>
+                        <td data-label="Стоимость">Высокая</td>
+                        <td data-label="Применение">Прочные детали</td>
+                    </tr>
+                    <tr>
+                        <td data-label="Технология">WAAM</td>
+                        <td data-label="Материалы">Металлы</td>
+                        <td data-label="Скорость">Высокая</td>
+                        <td data-label="Точность">±1 мм</td>
+                        <td data-label="Стоимость">Средняя</td>
+                        <td data-label="Применение">Крупные детали</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+    <script src="script.js"></script>
+</body>
+</html>
