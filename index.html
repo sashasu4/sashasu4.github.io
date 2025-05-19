@@ -1,0 +1,696 @@
+<script type="text/javascript">
+        var gk_isXlsx = false;
+        var gk_xlsxFileLookup = {};
+        var gk_fileData = {};
+        function filledCell(cell) {
+          return cell !== '' && cell != null;
+        }
+        function loadFileData(filename) {
+        if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
+            try {
+                var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
+                var firstSheetName = workbook.SheetNames[0];
+                var worksheet = workbook.Sheets[firstSheetName];
+
+                // Convert sheet to JSON to filter blank rows
+                var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
+                // Filter out blank rows (rows where all cells are empty, null, or undefined)
+                var filteredData = jsonData.filter(row => row.some(filledCell));
+
+                // Heuristic to find the header row by ignoring rows with fewer filled cells than the next row
+                var headerRowIndex = filteredData.findIndex((row, index) =>
+                  row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
+                );
+                // Fallback
+                if (headerRowIndex === -1 || headerRowIndex > 25) {
+                  headerRowIndex = 0;
+                }
+
+                // Convert filtered JSON back to CSV
+                var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex)); // Create a new sheet from filtered array of arrays
+                csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
+                return csv;
+            } catch (e) {
+                console.error(e);
+                return "";
+            }
+        }
+        return gk_fileData[filename] || "";
+        }
+        </script><!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Калькулятор выбора технологии производства БПЛА</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            background-color: #f4f4f9;
+            color: #333;
+            padding: 2vw;
+            font-size: calc(14px + 0.5vw);
+        }
+
+        .container {
+            max-width: 1200px;
+            width: 95%;
+            margin: 0 auto;
+            background: #fff;
+            padding: 3vw;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+
+        h1, h2, h3 {
+            color: #2c3e50;
+        }
+
+        h1 {
+            text-align: center;
+            margin-bottom: 4vw;
+            font-size: calc(20px + 1.5vw);
+        }
+
+        h2 {
+            border-bottom: 2px solid #3498db;
+            padding-bottom: 1vw;
+            margin: 4vw 0 2vw;
+            font-size: calc(16px + 1vw);
+        }
+
+        .input-group {
+            margin-bottom: 2.5vw;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 1vw;
+            font-weight: bold;
+            font-size: calc(12px + 0.5vw);
+        }
+
+        input, select {
+            width: 100%;
+            padding: 2vw;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: calc(12px + 0.5vw);
+        }
+
+        button {
+            background: #3498db;
+            color: #fff;
+            border: none;
+            padding: 2.5vw 3vw;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: calc(14px + 0.5vw);
+            width: 100%;
+            margin-top: 2vw;
+            touch-action: manipulation;
+        }
+
+        button:hover {
+            background: #2980b9;
+        }
+
+        .result-section {
+            margin-top: 3vw;
+            padding: 3vw;
+            background: #e8f4fc;
+            border-radius: 4px;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        .recommended-tech {
+            font-weight: bold;
+            color: #27ae60;
+            font-size: calc(16px + 0.5vw);
+        }
+
+        .formula {
+            background-color: #f9f9f9;
+            border-left: 4px solid #3498db;
+            padding: 2vw 3vw;
+            margin: 2.5vw 0;
+            font-family: monospace;
+            font-size: calc(12px + 0.5vw);
+            overflow-x: auto;
+        }
+
+        .tech-comparison {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 2.5vw 0;
+        }
+
+        .tech-comparison th, .tech-comparison td {
+            border: 1px solid #ddd;
+            padding: 2vw;
+            text-align: left;
+            font-size: calc(12px + 0.5vw);
+        }
+
+        .tech-comparison th {
+            background-color: #3498db;
+            color: white;
+        }
+
+        .tech-comparison tr:nth-child(even) {
+            background-color: #f2f2f2;
+        }
+
+        .tab {
+            overflow-x: auto;
+            border: 1px solid #ccc;
+            background-color: #f1f1f1;
+            border-radius: 4px 4px 0 0;
+            display: flex;
+        }
+
+        .tab button {
+            background-color: inherit;
+            border: none;
+            outline: none;
+            cursor: pointer;
+            padding: 2vw 3vw;
+            transition: background-color 0.3s;
+            color: #333;
+            flex: 1;
+            text-align: center;
+            font-size: calc(12px + 0.5vw);
+        }
+
+        .tab button:hover {
+            background-color: #ddd;
+        }
+
+        .tab button.active {
+            background-color: #3498db;
+            color: white;
+        }
+
+        .tabcontent {
+            display: none;
+            padding: 3vw;
+            border: 1px solid #ccc;
+            border-top: none;
+            border-radius: 0 0 4px 4px;
+        }
+
+        /* Медиа-запросы для мобильных устройств */
+        @media (max-width: 768px) {
+            body {
+                padding: 4vw;
+                font-size: calc(12px + 1vw);
+            }
+
+            .container {
+                width: 100%;
+                padding: 4vw;
+            }
+
+            h1 {
+                font-size: calc(16px + 2vw);
+                margin-bottom: 6vw;
+            }
+
+            h2 {
+                font-size: calc(14px + 1.5vw);
+                margin: 6vw 0 3vw;
+            }
+
+            label {
+                font-size: calc(10px + 1vw);
+            }
+
+            input, select {
+                padding: 3vw;
+                font-size: calc(10px + 1vw);
+            }
+
+            button {
+                padding: 3.5vw 4vw;
+                font-size: calc(12px + 1vw);
+            }
+
+            .tech-comparison {
+                display: block;
+                overflow-x: auto;
+                white-space: nowrap;
+            }
+
+            .tab button {
+                padding: 3vw 2vw;
+                font-size: calc(10px + 1vw);
+            }
+
+            .formula {
+                font-size: calc(10px + 1vw);
+                padding: 3vw;
+            }
+        }
+
+        @media (max-width: 480px) {
+            h1 {
+                font-size: calc(14px + 2.5vw);
+            }
+
+            h2 {
+                font-size: calc(12px + 2vw);
+            }
+
+            button {
+                padding: 4vw 5vw;
+            }
+
+            .input-group {
+                margin-bottom: 4vw;
+            }
+        }
+
+        /* Анимация только для ПК */
+        @media (min-width: 769px) {
+            .tabcontent {
+                animation: fadeEffect 1s;
+            }
+
+            @keyframes fadeEffect {
+                from { opacity: 0; }
+                to { opacity: 1; }
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Калькулятор выбора технологии производства БПЛА</h1>
+        
+        <div class="tab">
+            <button class="tablinks active" onclick="openTab(event, 'Comparison')">Сравнение подходов</button>
+            <button class="tablinks" onclick="openTab(event, 'AdditiveSelection')">Выбор аддитивной технологии</button>
+            <button class="tablinks" onclick="openTab(event, 'Info')">Информация и метрики</button>
+        </div>
+
+        <!-- Вкладка 1: Сравнение аддитивного и традиционного производства -->
+        <div id="Comparison" class="tabcontent" style="display: block;">
+            <h2>Сравнение аддитивного и традиционного производства</h2>
+            <form id="comparisonForm">
+                <div class="input-group">
+                    <label for="tTraditional">Время традиционного производства (дни):</label>
+                    <input type="number" id="tTraditional" min="1" value="30" required>
+                </div>
+                <div class="input-group">
+                    <label for="tAM">Время аддитивного производства (дни):</label>
+                    <input type="number" id="tAM" min="1" value="5" required>
+                </div>
+                <div class="input-group">
+                    <label for="cFlex">Стоимость перенастройки (у.е.):</label>
+                    <input type="number" id="cFlex" min="0" value="10000" required>
+                </div>
+                <div class="input-group">
+                    <label for="cTotal">Общая стоимость производства (у.е.):</label>
+                    <input type="number" id="cTotal" min="1" value="50000" required>
+                </div>
+                <div class="input-group">
+                    <label for="wasteAM">Отходы аддитивного производства (кг):</label>
+                    <input type="number" id="wasteAM" min="0" value="0.5" step="0.1" required>
+                </div>
+                <div class="input-group">
+                    <label for="wasteTraditional">Отходы традиционного производства (кг):</label>
+                    <input type="number" id="wasteTraditional" min="0" value="2.5" step="0.1" required>
+                </div>
+                <button type="button" onclick="calculateComparison()">Рассчитать</button>
+            </form>
+
+            <div id="comparisonResult" class="result-section hidden">
+                <h3>Результат сравнения:</h3>
+                <p id="efficiencyValue"></p>
+                <p id="efficiencyInterpretation"></p>
+                <h3>Сравнительная таблица:</h3>
+                <table class="tech-comparison">
+                    <tr>
+                        <th>Показатель</th>
+                        <th>Аддитивное производство</th>
+                        <th>Традиционное производство</th>
+                    </tr>
+                    <tr>
+                        <td>Время (дни)</td>
+                        <td id="compTimeAM"></td>
+                        <td id="compTimeTraditional"></td>
+                    </tr>
+                    <tr>
+                        <td>Отходы (кг)</td>
+                        <td id="compWasteAM"></td>
+                        <td id="compWasteTraditional"></td>
+                    </tr>
+                    <tr>
+                        <td>Себестоимость (у.е.)</td>
+                        <td id="compCostAM"></td>
+                        <td id="compCostTraditional"></td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+
+        <!-- Вкладка 2: Выбор аддитивной технологии -->
+        <div id="AdditiveSelection" class="tabcontent">
+            <h2>Выбор аддитивной технологии</h2>
+            <form id="additiveForm">
+                <div class="input-group">
+                    <label for="productionVolume">Объем производства (шт.):</label>
+                    <input type="number" id="productionVolume" min="1" value="10" required>
+                </div>
+                <div class="input-group">
+                    <label for="timeConstraint">Срок производства (дни):</label>
+                    <input type="number" id="timeConstraint" min="1" value="7" required>
+                </div>
+                <div class="input-group">
+                    <label for="budget">Бюджет:</label>
+                    <select id="budget" required>
+                        <option value="low">Низкий</option>
+                        <option value="medium" selected>Средний</option>
+                        <option value="high">Высокий</option>
+                    </select>
+                </div>
+                <div class="input-group">
+                    <label for="material">Материал:</label>
+                    <select id="material" required>
+                        <option value="plastic">Пластик (PLA, ABS)</option>
+                        <option value="nylon">Нейлон (PA12)</option>
+                        <option value="metal">Металл (титан, алюминий)</option>
+                    </select>
+                </div>
+                <div class="input-group">
+                    <label for="complexity">Сложность геометрии:</label>
+                    <select id="complexity" required>
+                        <option value="low">Простая</option>
+                        <option value="medium" selected>Средняя</option>
+                        <option value="high">Высокая</option>
+                    </select>
+                </div>
+                <div class="input-group">
+                    <label for="energy">Энергопотребление (приоритет):</label>
+                    <select id="energy" required>
+                        <option value="low">Низкий</option>
+                        <option value="medium" selected>Средний</option>
+                        <option value="high">Высокий</option>
+                    </select>
+                </div>
+                <button type="button" onclick="calculateAdditive()">Рассчитать</button>
+            </form>
+
+            <div id="additiveResult" class="result-section hidden">
+                <h3>Рекомендуемая технология:</h3>
+                <p class="recommended-tech" id="recommendedTech"></p>
+                <p id="techExplanation"></p>
+                <h3>Веса критериев (AHP):</h3>
+                <p id="criteriaWeights"></p>
+                <h3>Альтернативные варианты:</h3>
+                <div id="alternatives"></div>
+            </div>
+        </div>
+
+        <!-- Вкладка 3: Информация и метрики -->
+        <div id="Info" class="tabcontent">
+            <h2>Информация и метрики</h2>
+            <h3>Метрики КПЭ</h3>
+            <table class="tech-comparison">
+                <tr>
+                    <th>Группа</th>
+                    <th>Метрика</th>
+                    <th>Формула/Описание</th>
+                    <th>Целевое значение</th>
+                </tr>
+                <tr>
+                    <td>Технические</td>
+                    <td>Точность размеров (мм)</td>
+                    <td>Отклонение от CAD-модели</td>
+                    <td>±0.1 мм</td>
+                </tr>
+                <tr>
+                    <td>Экономические</td>
+                    <td>Себестоимость изделия (у.е.)</td>
+                    <td>C = C<sub>мат</sub> + C<sub>энер</sub> + C<sub>труд</sub></td>
+                    <td>< $100</td>
+                </tr>
+                <tr>
+                    <td>Экологические</td>
+                    <td>Доля отходов (%)</td>
+                    <td>W<sub>отх</sub> = M<sub>отх</sub> / M<sub>всего</sub> × 100</td>
+                    <td>< 10%</td>
+                </tr>
+                <tr>
+                    <td>Технические</td>
+                    <td>Коэффициент автоматизации</td>
+                    <td>K<sub>ef</sub> = (Ψ<sub>раб</sub> × E) / V<sub>год</sub></td>
+                    <td>0.8–1.0</td>
+                </tr>
+            </table>
+
+            <h3>Формулы</h3>
+            <div class="formula">
+                K<sub>ef</sub> = (Ψ<sub>раб</sub> × E) / V<sub>год</sub>
+                <br>Где:
+                <br>Ψ<sub>раб</sub> — фонд рабочих часов оборудования (ч/год),
+                <br>E — эффективность операций (0–1),
+                <br>V<sub>год</sub> — объем годного выпуска (шт.).
+            </div>
+            <div class="formula">
+                W<sub>отх</sub> = M<sub>отх</sub> / M<sub>всего</sub> × 100
+                <br>Где:
+                <br>M<sub>отх</sub> — масса отходов (кг),
+                <br>M<sub>всего</sub> — общая масса материала (кг).
+            </div>
+            <div class="formula">
+                C = C<sub>мат</sub> + C<sub>энер</sub> + C<sub>труд</sub>
+                <br>Где:
+                <br>C<sub>мат</sub> — стоимость материалов (у.е.),
+                <br>C<sub>энер</sub> — стоимость энергии (у.е.),
+                <br>C<sub>труд</sub> — стоимость труда (у.е.).
+            </div>
+
+            <h3>Пример расчета</h3>
+            <p>Для корпуса БПЛА с массой материала 1 кг, отходами 0.1 кг, фондом рабочих часов 8000 ч/год, эффективностью 0.85 и выпуском 1000 шт.:</p>
+            <ul>
+                <li>Доля отходов: W<sub>отх</sub> = 0.1 / 1 × 100 = 10%</li>
+                <li>Коэффициент автоматизации: K<sub>ef</sub> = (8000 × 0.85) / 1000 = 6.8 (нормализовать до 0–1, если требуется)</li>
+                <li>Себестоимость: C = 20 (материалы) + 10 (энергия) + 20 (труд) = 50 у.е.</li>
+            </ul>
+
+            <h3>Сравнение технологий</h3>
+            <table class="tech-comparison">
+                <tr>
+                    <th>Технология</th>
+                    <th>Материалы</th>
+                    <th>Скорость</th>
+                    <th>Точность</th>
+                    <th>Стоимость</th>
+                    <th>Применение</th>
+                </tr>
+                <tr>
+                    <td>FDM</td>
+                    <td>PLA, ABS</td>
+                    <td>Высокая</td>
+                    <td>±0.5 мм</td>
+                    <td>Низкая</td>
+                    <td>Прототипы</td>
+                </tr>
+                <tr>
+                    <td>SLA</td>
+                    <td>Фотополимеры</td>
+                    <td>Средняя</td>
+                    <td>±0.05 мм</td>
+                    <td>Средняя</td>
+                    <td>Мелкие детали</td>
+                </tr>
+                <tr>
+                    <td>SLS</td>
+                    <td>Нейлон</td>
+                    <td>Средняя</td>
+                    <td>±0.1 мм</td>
+                    <td>Средняя</td>
+                    <td>Несущие элементы</td>
+                </tr>
+                <tr>
+                    <td>DMLS</td>
+                    <td>Металлы</td>
+                    <td>Низкая</td>
+                    <td>±0.02 мм</td>
+                    <td>Высокая</td>
+                    <td>Прочные детали</td>
+                </tr>
+                <tr>
+                    <td>WAAM</td>
+                    <td>Металлы</td>
+                    <td>Высокая</td>
+                    <td>±1 мм</td>
+                    <td>Средняя</td>
+                    <td>Крупные детали</td>
+                </tr>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        function openTab(evt, tabName) {
+            var i, tabcontent, tablinks;
+            tabcontent = document.getElementsByClassName("tabcontent");
+            for (i = 0; i < tabcontent.length; i++) {
+                tabcontent[i].style.display = "none";
+            }
+            tablinks = document.getElementsByClassName("tablinks");
+            for (i = 0; i < tablinks.length; i++) {
+                tablinks[i].className = tablinks[i].className.replace(" active", "");
+            }
+            document.getElementById(tabName).style.display = "block";
+            evt.currentTarget.className += " active";
+        }
+
+        function calculateComparison() {
+            const tTraditional = parseFloat(document.getElementById("tTraditional").value);
+            const tAM = parseFloat(document.getElementById("tAM").value);
+            const cFlex = parseFloat(document.getElementById("cFlex").value);
+            const cTotal = parseFloat(document.getElementById("cTotal").value);
+            const wasteAM = parseFloat(document.getElementById("wasteAM").value);
+            const wasteTraditional = parseFloat(document.getElementById("wasteTraditional").value);
+
+            const alpha = 0.4, beta = 0.3, gamma = 0.3;
+            const nDesign = 10, nTraditional = 2;
+
+            const timeComponent = alpha * (tTraditional - tAM) / tTraditional;
+            const costComponent = beta * cFlex / cTotal;
+            const designComponent = gamma * Math.log(1 + nDesign / nTraditional);
+            const Eadapt = timeComponent + costComponent + designComponent;
+
+            const totalMaterial = 10;
+            const wasteRatioAM = (wasteAM / totalMaterial) * 100;
+            const wasteRatioTraditional = (wasteTraditional / totalMaterial) * 100;
+
+            const costAM = cTotal * 0.8;
+            const costTraditional = cTotal;
+
+            let interpretation = "";
+            if (Eadapt > 0.7) {
+                interpretation = "Аддитивное производство значительно эффективнее. Рекомендуется для данных условий.";
+            } else if (Eadapt > 0.4) {
+                interpretation = "Аддитивное производство предпочтительнее. Обеспечивает экономию времени и гибкость.";
+            } else if (Eadapt > 0.2) {
+                interpretation = "Требуется дополнительный анализ. Преимущества аддитивного производства неочевидны.";
+            } else {
+                interpretation = "Традиционное производство более эффективно для данных условий.";
+            }
+
+            document.getElementById("efficiencyValue").innerHTML = 
+                `E<sub>adapt</sub> = ${Eadapt.toFixed(3)}<br>
+                Доля отходов (AM): ${wasteRatioAM.toFixed(1)}%<br>
+                Доля отходов (традиц.): ${wasteRatioTraditional.toFixed(1)}%`;
+            document.getElementById("efficiencyInterpretation").textContent = interpretation;
+
+            document.getElementById("compTimeAM").textContent = tAM;
+            document.getElementById("compTimeTraditional").textContent = tTraditional;
+            document.getElementById("compWasteAM").textContent = wasteAM;
+            document.getElementById("compWasteTraditional").textContent = wasteTraditional;
+            document.getElementById("compCostAM").textContent = costAM.toFixed(2);
+            document.getElementById("compCostTraditional").textContent = costTraditional.toFixed(2);
+
+            document.getElementById("comparisonResult").classList.remove("hidden");
+        }
+
+        function calculateAdditive() {
+            const volume = parseInt(document.getElementById("productionVolume").value);
+            const time = parseInt(document.getElementById("timeConstraint").value);
+            const budget = document.getElementById("budget").value;
+            const material = document.getElementById("material").value;
+            const complexity = document.getElementById("complexity").value;
+            const energy = document.getElementById("energy").value;
+
+            const criteria = ["Скорость", "Себестоимость", "Экологичность", "Механические свойства", "Сложность геометрии", "Энергопотребление"];
+            const weights = [0.25, 0.2, 0.15, 0.2, 0.15, 0.05];
+
+            const techScores = {
+                "FDM": { speed: 5, cost: 5, eco: 3, mech: 2, geom: 2, energy: 4 },
+                "SLA": { speed: 3, cost: 3, eco: 2, mech: 3, geom: 5, energy: 3 },
+                "SLS": { speed: 3, cost: 3, eco: 4, mech: 4, geom: 4, energy: 2 },
+                "DMLS": { speed: 1, cost: 1, eco: 3, mech: 5, geom: 5, energy: 1 },
+                "WAAM": { speed: 4, cost: 3, eco: 2, mech: 3, geom: 2, energy: 3 }
+            };
+
+            let scores = {};
+            for (let tech in techScores) {
+                scores[tech] = (
+                    weights[0] * techScores[tech].speed +
+                    weights[1] * techScores[tech].cost +
+                    weights[2] * techScores[tech].eco +
+                    weights[3] * techScores[tech].mech +
+                    weights[4] * techScores[tech].geom +
+                    weights[5] * techScores[tech].energy
+                );
+            }
+
+            let recommendedTech = Object.keys(scores).reduce((a, b) => scores[a] > scores[b] ? a : b);
+            let explanation = "";
+            let alternatives = [];
+
+            if (material === "metal") {
+                if (budget === "high" && volume < 50) {
+                    recommendedTech = "DMLS";
+                    explanation = "DMLS обеспечивает высокую точность и прочность для металлических деталей малой серии.";
+                    alternatives.push({ tech: "WAAM", desc: "Для крупных деталей с меньшей точностью" });
+                } else {
+                    recommendedTech = "WAAM";
+                    explanation = "WAAM экономичен для крупных металлических деталей с высокой скоростью производства.";
+                    alternatives.push({ tech: "DMLS", desc: "Для более точных деталей" });
+                }
+            } else if (material === "plastic" && time < 5 && complexity === "low") {
+                recommendedTech = "FDM";
+                explanation = "FDM оптимален для быстрого и дешевого производства простых пластиковых деталей.";
+                alternatives.push({ tech: "SLS", desc: "Для более прочных деталей" });
+            } else if (complexity === "high") {
+                recommendedTech = "SLA";
+                explanation = "SLA обеспечивает высокую точность для сложных геометрий.";
+                alternatives.push({ tech: "SLS", desc: "Для функциональных деталей" });
+            } else {
+                recommendedTech = "SLS";
+                explanation = "SLS подходит для нейлона и сложных деталей с хорошими механическими свойствами.";
+                alternatives.push({ tech: "FDM", desc: "Для более дешевого производства" });
+            }
+
+            if (energy === "low" && recommendedTech === "DMLS") {
+                recommendedTech = "WAAM";
+                explanation = "WAAM выбран из-за низкого приоритета энергопотребления, подходит для металлов.";
+                alternatives.push({ tech: "DMLS", desc: "Для высокой точности" });
+            }
+
+            document.getElementById("recommendedTech").textContent = recommendedTech;
+            document.getElementById("techExplanation").textContent = explanation;
+            document.getElementById("criteriaWeights").textContent = criteria.map((c, i) => `${c}: ${weights[i].toFixed(2)}`).join(", ");
+
+            const alternativesDiv = document.getElementById("alternatives");
+            alternativesDiv.innerHTML = "";
+            if (alternatives.length > 0) {
+                const ul = document.createElement("ul");
+                alternatives.forEach(alt => {
+                    const li = document.createElement("li");
+                    li.innerHTML = `<strong>${alt.tech}</strong> - ${alt.desc}`;
+                    ul.appendChild(li);
+                });
+                alternativesDiv.appendChild(ul);
+            }
+
+            document.getElementById("additiveResult").classList.remove("hidden");
+        }
+    </script>
+</body>
+</html>
