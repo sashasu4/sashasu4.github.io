@@ -1,0 +1,793 @@
+<script type="text/javascript">
+        var gk_isXlsx = false;
+        var gk_xlsxFileLookup = {};
+        var gk_fileData = {};
+        function filledCell(cell) {
+          return cell !== '' && cell != null;
+        }
+        function loadFileData(filename) {
+        if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
+            try {
+                var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
+                var firstSheetName = workbook.SheetNames[0];
+                var worksheet = workbook.Sheets[firstSheetName];
+
+                // Convert sheet to JSON to filter blank rows
+                var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
+                // Filter out blank rows (rows where all cells are empty, null, or undefined)
+                var filteredData = jsonData.filter(row => row.some(filledCell));
+
+                // Heuristic to find the header row by ignoring rows with fewer filled cells than the next row
+                var headerRowIndex = filteredData.findIndex((row, index) =>
+                  row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
+                );
+                // Fallback
+                if (headerRowIndex === -1 || headerRowIndex > 25) {
+                  headerRowIndex = 0;
+                }
+
+                // Convert filtered JSON back to CSV
+                var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex)); // Create a new sheet from filtered array of arrays
+                csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
+                return csv;
+            } catch (e) {
+                console.error(e);
+                return "";
+            }
+        }
+        return gk_fileData[filename] || "";
+        }
+        </script><!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>Производственный калькулятор</title>
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 25px;
+            color: #444;
+            background-color: #f5f7fa;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+        }
+
+        h1 {
+            text-align: center;
+            color: #2c3e50;
+            border-bottom: 2px solid #3498db;
+            padding-bottom: 10px;
+        }
+
+        .container {
+            width: 100%;
+        }
+
+        .tabs {
+            display: flex;
+            justify-content: center;
+            margin-bottom: 20px;
+        }
+
+        .tab {
+            padding: 10px 20px;
+            cursor: pointer;
+            background: #ecf0f1;
+            border: 1px solid #ddd;
+            margin-right: 5px;
+            border-radius: 6px 6px 0 0;
+            transition: background 0.3s;
+        }
+
+        .tab.active {
+            background: white;
+            border-bottom: none;
+            font-weight: bold;
+        }
+
+        .tab-content {
+            display: none;
+            background: white;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 0 0 6px 6px;
+            width: 100%;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        label {
+            display: block;
+            margin-top: 10px;
+            font-weight: 600;
+        }
+
+        input, select {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 6px;
+            box-sizing: border-box;
+        }
+
+        input[type="checkbox"] {
+            width: auto;
+            vertical-align: middle;
+            margin-right: 10px;
+            margin-top: 5px;
+        }
+
+        button {
+            margin-top: 20px;
+            padding: 12px;
+            background-color: #3498db;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            width: 100%;
+        }
+
+        button:hover {
+            background-color: #2980b9;
+        }
+
+        .error {
+            color: red;
+            margin-top: 10px;
+            font-size: 14px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+
+        th, td {
+            border: 1px solid #ddd;
+            padding: 10px;
+            vertical-align: top;
+        }
+
+        th {
+            background-color: #f0f0f0;
+        }
+
+        .recommendation {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 6px;
+            font-weight: bold;
+            text-align: center;
+        }
+
+        .advantage {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .disadvantage {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .neutral {
+            background-color: #e2e3e5;
+            color: #383d41;
+            border: 1px solid #d6d8db;
+        }
+
+        .material-category {
+            font-weight: bold;
+            margin-top: 10px;
+        }
+
+        .formula {
+            font-family: 'Cambria', 'Times New Roman', serif;
+            font-size: 1.2em;
+            margin: 10px 0;
+        }
+
+        sub, sup {
+            font-size: 0.8em;
+            line-height: 1;
+        }
+
+        .tooltip-text {
+            font-size: 0.9em;
+            color: #666;
+            margin-top: 5px;
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1 class="text-2xl font-bold mb-6">Производственный калькулятор: AM vs TM и БПЛА</h1>
+
+    <!-- Вкладки -->
+    <div class="tabs">
+        <div class="tab active" onclick="switchTab(0)">Сравнение AM vs TM</div>
+        <div class="tab" onclick="switchTab(1)">БПЛА калькулятор</div>
+        <div class="tab" onclick="switchTab(2)">Формулы</div>
+    </div>
+
+    <!-- Вкладка 1: Сравнение AM vs TM -->
+    <div id="tab-0" class="tab-content calculator active">
+        <form id="am-vs-tm-form">
+            <div class="form-group">
+                <label for="production_time">Время производства (дни)</label>
+                <input type="number" id="production_time" min="0" step="0.1" value="15">
+                <div class="tooltip-text">Полный цикл производства партии, включая проектирование и тестирование.</div>
+            </div>
+            <div class="form-group">
+                <label for="production_cost">Стоимость производства (руб.)</label>
+                <input type="number" id="production_cost" min="0" step="100" value="50000">
+                <div class="tooltip-text">Затраты на материалы, труд, оборудование и энергопотребление.</div>
+            </div>
+            <div class="form-group">
+                <label for="unit_cost">Стоимость 1 шт. (руб.)</label>
+                <input type="number" id="unit_cost" min="0" step="10" value="1000">
+                <div class="tooltip-text">Затраты на одно изделие с учётом фиксированных издержек.</div>
+            </div>
+            <div class="form-group">
+                <label for="volume">Объем выпуска (шт./год)</label>
+                <input type="number" id="volume" min="1" value="50">
+                <div class="tooltip-text">Количество изделий в партии, влияющее на экономию масштаба.</div>
+            </div>
+            <div class="form-group">
+                <label class="flex-center"><input type="checkbox" id="material_variety"> Разнообразие материалов</label>
+                <div class="tooltip-text">Использование нескольких материалов (например, композиты и металлы).</div>
+            </div>
+            <div class="form-group">
+                <label class="flex-center"><input type="checkbox" id="complex_geometry"> Сложность геометрии</label>
+                <div class="tooltip-text">Наличие сложных форм (например, ячеистых структур).</div>
+            </div>
+            <div class="form-group">
+                <label for="shrinkage">Усадка материала (%)</label>
+                <input type="number" id="shrinkage" min="0" max="10" step="0.1" value="3">
+                <div class="tooltip-text">Уменьшение размеров изделия из-за свойств материала.</div>
+            </div>
+            <div class="form-group">
+                <label for="precision">Точность детали (мм)</label>
+                <input type="number" id="precision" min="0" step="0.01" value="0.1">
+                <div class="tooltip-text">Максимальное отклонение размеров изделия.</div>
+            </div>
+            <div class="form-group">
+                <label for="eco_percent">Экологичные материалы (%)</label>
+                <input type="number" id="eco_percent" min="0" max="100" value="20">
+                <div class="tooltip-text">Доля экологичных материалов и процессов.</div>
+            </div>
+            <button type="button" onclick="calculateAMvsTM()">Сравнить технологии</button>
+            <div id="results_am_vs_tm" style="margin-top: 20px; display: none;">
+                <table>
+                    <tr><th>Параметр</th><th>Традиционное производство</th><th>Аддитивное производство</th></tr>
+                    <tr><td>Время (дней)</td><td id="tm_time_result"></td><td id="am_time_result"></td></tr>
+                    <tr><td>Стоимость (руб.)</td><td id="tm_cost_result"></td><td id="am_cost_result"></td></tr>
+                    <tr><td>Стоимость 1 шт.</td><td id="tm_unit_cost_result"></td><td id="am_unit_cost_result"></td></tr>
+                    <tr><td>Экономия от масштаба</td><td id="tm_economy"></td><td id="am_economy"></td></tr>
+                </table>
+                <div id="recommendation" class="recommendation mt-4 p-3 rounded text-center"></div>
+            </div>
+            <div id="error_am_vs_tm" class="error mt-2"></div>
+        </form>
+    </div>
+
+    <!-- Вкладка 2: Калькулятор для БПЛА -->
+    <div id="tab-1" class="tab-content hidden">
+        <form id="bpla-form">
+            <h2 class="text-xl font-semibold mb-4">Выберите тип БПЛА и укажите параметры</h2>
+
+            <div class="form-group">
+                <label for="uav-type">Тип БПЛА</label>
+                <select id="uav-type" class="w-full p-2 mb-2">
+                    <option value="multirotor">Многороторные БПЛА</option>
+                    <option value="fixed-wing">БПЛА с неподвижным крылом</option>
+                    <option value="single-rotor">БПЛА с одним ротором</option>
+                    <option value="hybrid">Гибридный БПЛА</option>
+                </select>
+                <div class="tooltip-text">Тип беспилотного летательного аппарата, влияющий на выбор технологии производства.</div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div class="form-group">
+                    <label for="time_bpla">Срок производства (дни)</label>
+                    <input type="number" id="time_bpla" min="0" step="0.1" value="1">
+                    <div class="tooltip-text">Полный цикл производства партии, включая проектирование и тестирование.</div>
+                </div>
+                <div class="form-group">
+                    <label for="cost_bpla">Бюджет (₽)</label>
+                    <input type="number" id="cost_bpla" min="0" step="1000" value="10000">
+                    <div class="tooltip-text">Затраты на материалы, труд, оборудование и энергопотребление.</div>
+                </div>
+                <div class="form-group">
+                    <label for="item-cost_bpla">Стоимость одного изделия (₽)</label>
+                    <input type="number" id="item-cost_bpla" min="0" step="100" value="1000">
+                    <div class="tooltip-text">Затраты на одно изделие с учётом фиксированных издержек.</div>
+                </div>
+                <div class="form-group">
+                    <label for="setup-time_bpla">Время установки/отладки (часы)</label>
+                    <input type="number" id="setup-time_bpla" min="0" step="0.1" value="2">
+                    <div class="tooltip-text">Время, необходимое для настройки оборудования и отладки процесса.</div>
+                </div>
+                <div class="col-span-2 form-group">
+                    <label>Материалы (выберите один или несколько)</label>
+                    <div class="mt-1 space-y-2">
+                        <div class="material-category">Традиционные пластики</div>
+                        <div class="flex items-center"><input type="checkbox" id="material-pla" name="materials" value="pla"><label for="material-pla">PLA</label></div>
+                        <div class="flex items-center"><input type="checkbox" id="material-abs" name="materials" value="abs"><label for="material-abs">ABS</label></div>
+                        <div class="flex items-center"><input type="checkbox" id="material-petg" name="materials" value="petg"><label for="material-petg">PETG</label></div>
+                        <div class="flex items-center"><input type="checkbox" id="material-tpu" name="materials" value="tpu"><label for="material-tpu">TPU (гибкий пластик)</label></div>
+
+                        <div class="material-category mt-2">Инженерные пластики</div>
+                        <div class="flex items-center"><input type="checkbox" id="material-peek" name="materials" value="peek"><label for="material-peek">PEEK</label></div>
+                        <div class="flex items-center"><input type="checkbox" id="material-psu" name="materials" value="psu"><label for="material-psu">PSU</label></div>
+
+                        <div class="material-category mt-2">Композитные пластики</div>
+                        <div class="flex items-center"><input type="checkbox" id="material-carbon" name="materials" value="carbon"><label for="material-carbon">Углеволокно</label></div>
+                        <div class="flex items-center"><input type="checkbox" id="material-glass" name="materials" value="glass"><label for="material-glass">Стекловолокно</label></div>
+
+                        <div class="material-category mt-2">Металлонаполненные пластики</div>
+                        <div class="flex items-center"><input type="checkbox" id="material-metal-nylon" name="materials" value="metal-nylon"><label for="material-metal-nylon">Металлонаполненный нейлон</label></div>
+
+                        <div class="material-category mt-2">Фотополимеры</div>
+                        <div class="flex items-center"><input type="checkbox" id="material-resin" name="materials" value="resin"><label for="material-resin">Фотополимерные смолы</label></div>
+
+                        <div class="material-category mt-2">Металлы</div>
+                        <div class="flex items-center"><input type="checkbox" id="material-steel" name="materials" value="steel"><label for="material-steel">Нержавеющая сталь</label></div>
+                        <div class="flex items-center"><input type="checkbox" id="material-titanium" name="materials" value="titanium"><label for="material-titanium">Титан</label></div>
+                        <div class="flex items-center"><input type="checkbox" id="material-aluminum" name="materials" value="aluminum"><label for="material-aluminum">Алюминий</label></div>
+                    </div>
+                    <div class="tooltip-text">Использование нескольких материалов (например, композиты и металлы). Отметьте, если применимо.</div>
+                </div>
+
+                <div class="form-group">
+                    <label for="geometry_bpla">Сложная геометрия</label>
+                    <select id="geometry_bpla">
+                        <option value="yes">Да</option>
+                        <option value="no">Нет</option>
+                    </select>
+                    <div class="tooltip-text">Наличие сложных форм (например, ячеистых структур).</div>
+                </div>
+                <div class="form-group">
+                    <label for="shrinkage_bpla">Усадка материала (%)</label>
+                    <input type="number" id="shrinkage_bpla" min="0" step="0.1" value="1">
+                    <div class="tooltip-text">Уменьшение размеров изделия из-за свойств материала.</div>
+                </div>
+                <div class="form-group">
+                    <label for="accuracy_bpla">Точность изделия (мм)</label>
+                    <input type="number" id="accuracy_bpla" min="0" step="0.01" value="0.5">
+                    <div class="tooltip-text">Максимальное отклонение размеров изделия.</div>
+                </div>
+                <div class="form-group">
+                    <label for="eco_bpla">Экологичность (%)</label>
+                    <input type="number" id="eco_bpla" min="0" max="100" value="50">
+                    <div class="tooltip-text">Доля экологичных материалов и процессов.</div>
+                </div>
+                <div class="form-group">
+                    <label for="volume_bpla">Объём выпуска (шт./год)</label>
+                    <input type="number" id="volume_bpla" min="0" step="1" value="1000">
+                    <div class="tooltip-text">Количество изделий в партии, влияющее на экономию масштаба.</div>
+                </div>
+            </div>
+
+            <button type="button" onclick="calculateBPLA()" class="my-4">Рассчитать лучший метод</button>
+            <div id="result_bpla" class="mt-4 p-4 bg-gray-50 rounded-md hidden">
+                <h3 class="text-lg font-semibold">Рекомендованный метод</h3>
+                <p id="method_bpla" class="text-gray-700 mt-2"></p>
+                <p id="reason_bpla" class="text-gray-600 mt-2"></p>
+                <p id="efficiency_bpla" class="text-gray-600 mt-2"></p>
+            </div>
+            <div id="error_bpla" class="error mt-2"></div>
+        </form>
+    </div>
+
+    <!-- Вкладка 3: Формулы -->
+    <div id="tab-2" class="tab-content hidden">
+        <h2 class="text-xl font-semibold mb-4">Формулы и пояснения</h2>
+        <table>
+            <tr>
+                <th>Критерий / Показатель</th>
+                <th>Формула / Описание</th>
+                <th>Диапазон</th>
+                <th>Целевое значение</th>
+            </tr>
+            <tr>
+                <td>T<sub>AM</sub> — время аддитивного производства</td>
+                <td>TAM = (kVolume + kComplexity) × kShrinkage × kEco × T</td>
+                <td>1–10 дней</td>
+                <td><5 дней</td>
+            </tr>
+            <tr>
+                <td>kVolume</td>
+                <td>kVolume = 0.5 + 0.02 × max(V – 10, 0)</td>
+                <td>0.5–...</td>
+                <td>>1</td>
+            </tr>
+            <tr>
+                <td>kComplexity</td>
+                <td>kComplexity = 0.3 при сложной геометрии, иначе 0</td>
+                <td>0–0.3</td>
+                <td>0.3</td>
+            </tr>
+            <tr>
+                <td>kShrinkage</td>
+                <td>kShrinkage = 1 + S / 100</td>
+                <td>1–1.1</td>
+                <td><1%</td>
+            </tr>
+            <tr>
+                <td>kEco</td>
+                <td>kEco = 1 – E / 100</td>
+                <td>0–1</td>
+                <td><0.2</td>
+            </tr>
+            <tr>
+                <td>C<sub>TM</sub> — стоимость традиционного производства</td>
+                <td>CTM = C × kEconomy</td>
+                <td>10 000–200 000 ₽</td>
+                <td><50 000 ₽</td>
+            </tr>
+            <tr>
+                <td>kEconomy</td>
+                <td>kEconomy = 0.95<sup>log<sub>10</sub>(V / 10)</sup>, если V > 10</td>
+                <td>0.5–1</td>
+                <td><0.7</td>
+            </tr>
+            <tr>
+                <td>UC<sub>AM</sub> — стоимость одной штуки AM</td>
+                <td>UCAM = UC × 1.5 × kMaterial × kGeometry × kPrecision</td>
+                <td>1 000–20 000 ₽</td>
+                <td><5 000 ₽</td>
+            </tr>
+            <tr>
+                <td>kMaterial</td>
+                <td>kMaterial = 1.2 при разнообразии, иначе 1.0</td>
+                <td>1.0–1.2</td>
+                <td>1.0</td>
+            </tr>
+            <tr>
+                <td>kPrecision</td>
+                <td>kPrecision = 1 + (0.1 - min(P, 0.1)) × 5</td>
+                <td>1.0–1.5</td>
+                <td><1.1</td>
+            </tr>
+            <tr>
+                <td>EC<sub>TM</sub> — экономия ТМ</td>
+                <td>ETM = (1 - kEconomy) × 100%</td>
+                <td>0–50%</td>
+                <td>>30%</td>
+            </tr>
+            <tr>
+                <td>EC<sub>AM</sub> — экономия AM</td>
+                <td>ECAM = 0%</td>
+                <td>0%</td>
+                <td>0%</td>
+            </tr>
+        </table>
+    </div>
+</div>
+
+<script>
+    function switchTab(index) {
+        document.querySelectorAll('.tab').forEach((tab, i) => tab.classList.toggle('active', i === index));
+        document.querySelectorAll('.tab-content').forEach((content, i) => content.style.display = i === index ? 'block' : 'none');
+    }
+
+    // Расчёт AM vs TM
+    function calculateAMvsTM() {
+        const productionTime = parseFloat(document.getElementById('production_time').value);
+        const productionCost = parseFloat(document.getElementById('production_cost').value);
+        const unitCost = parseFloat(document.getElementById('unit_cost').value);
+        const volume = parseInt(document.getElementById('volume').value);
+
+        if (!productionTime || !productionCost || !unitCost || !volume) {
+            document.getElementById('error_am_vs_tm').textContent = 'Заполните все обязательные числовые поля.';
+            return;
+        } else {
+            document.getElementById('error_am_vs_tm').textContent = '';
+        }
+
+        const materialVariety = document.getElementById('material_variety').checked;
+        const complexGeometry = document.getElementById('complex_geometry').checked;
+        const shrinkage = parseFloat(document.getElementById('shrinkage').value);
+        const precision = parseFloat(document.getElementById('precision').value);
+        const ecoPercent = parseFloat(document.getElementById('eco_percent').value);
+
+        let kVolume = 0.5 + 0.02 * Math.max(volume - 10, 0);
+        let kComplexity = complexGeometry ? 0.3 : 0;
+        let kTotal = kVolume + kComplexity;
+        let kShrinkage = 1 + shrinkage / 100;
+        let kEco = 1 - ecoPercent / 100;
+        let amTime = kTotal * kShrinkage * kEco * productionTime;
+
+        const economyFactor = volume > 10 ? Math.pow(0.95, Math.log10(volume / 10)) : 1;
+        let tmUnitCost = unitCost * economyFactor;
+        let tmCost = productionCost * economyFactor;
+
+        let baseCostAM = unitCost * 1.5;
+        let materialFactor = materialVariety ? 1.2 : 1.0;
+        let geometryFactor = complexGeometry ? 1.3 : 1.0;
+        let precisionFactor = 1 + (0.1 - Math.min(precision, 0.1)) * 5;
+        let amUnitCost = baseCostAM * materialFactor * geometryFactor * precisionFactor;
+        let amCost = amUnitCost * volume;
+
+        document.getElementById('tm_time_result').textContent = productionTime.toFixed(1);
+        document.getElementById('am_time_result').textContent = amTime.toFixed(1);
+        document.getElementById('tm_cost_result').textContent = tmCost.toFixed(2);
+        document.getElementById('am_cost_result').textContent = amCost.toFixed(2);
+        document.getElementById('tm_unit_cost_result').textContent = tmUnitCost.toFixed(2);
+        document.getElementById('am_unit_cost_result').textContent = amUnitCost.toFixed(2);
+        document.getElementById('tm_economy').textContent = `${(1 - economyFactor) * 100}%`;
+        document.getElementById('am_economy').textContent = `0%`;
+
+        const timeDiff = productionTime - amTime;
+        const costDiff = tmCost - amCost;
+        const relCostDiff = costDiff / tmCost;
+        const recommendation = document.getElementById('recommendation');
+        recommendation.className = 'recommendation';
+
+        if (timeDiff > 1 && relCostDiff > 0.1) {
+            recommendation.textContent = '✅ Аддитивное производство выгоднее';
+            recommendation.classList.add('advantage');
+        } else if (timeDiff > 1) {
+            recommendation.textContent = '⏱ Аддитивное производство быстрее';
+            recommendation.classList.add('advantage');
+        } else if (relCostDiff > 0.1) {
+            recommendation.textContent = '💰 Аддитивное производство дешевле';
+            recommendation.classList.add('advantage');
+        } else if (Math.abs(timeDiff) < 1 && Math.abs(relCostDiff) < 0.1) {
+            recommendation.textContent = '⚖ Оба метода равны по эффективности';
+            recommendation.classList.add('neutral');
+        } else {
+            recommendation.textContent = '⚠ Традиционное производство может быть более выгодным';
+            recommendation.classList.add('disadvantage');
+        }
+
+        document.getElementById('results_am_vs_tm').style.display = 'block';
+    }
+
+    // Данные методов БПЛА
+    const methods = {
+        FDM: {
+            name: "FDM",
+            accuracy: 0.2,
+            cost: 10000,
+            itemCost: 1000,
+            time: 1,
+            setupTime: 2,
+            materials: ["pla", "abs", "petg", "tpu", "peek", "psu", "carbon", "glass", "metal-nylon"],
+            geometry: "yes",
+            volume: 1000,
+            eco: 90,
+            shrinkage: 1,
+            suitableUAVs: ["multirotor", "fixed-wing", "single-rotor", "hybrid"]
+        },
+        SLA: {
+            name: "SLA",
+            accuracy: 0.05,
+            cost: 50000,
+            itemCost: 5000,
+            time: 0.5,
+            setupTime: 1,
+            materials: ["resin"],
+            geometry: "yes",
+            volume: 500,
+            eco: 50,
+            shrinkage: 0.5,
+            suitableUAVs: ["multirotor", "fixed-wing", "single-rotor", "hybrid"]
+        },
+        SLS: {
+            name: "SLS",
+            accuracy: 0.1,
+            cost: 100000,
+            itemCost: 10000,
+            time: 2,
+            setupTime: 3,
+            materials: ["nylon", "metal-nylon"],
+            geometry: "yes",
+            volume: 2000,
+            eco: 60,
+            shrinkage: 2,
+            suitableUAVs: ["multirotor", "fixed-wing", "single-rotor", "hybrid"]
+        },
+        DMLS: {
+            name: "DMLS",
+            accuracy: 0.1,
+            cost: 200000,
+            itemCost: 20000,
+            time: 3,
+            setupTime: 4,
+            materials: ["steel", "titanium", "aluminum"],
+            geometry: "yes",
+            volume: 500,
+            eco: 60,
+            shrinkage: 0.5,
+            suitableUAVs: ["multirotor", "single-rotor", "hybrid"]
+        },
+        WAAM: {
+            name: "WAAM",
+            accuracy: 2,
+            cost: 50000,
+            itemCost: 5000,
+            time: 1,
+            setupTime: 2,
+            materials: ["steel", "titanium", "aluminum"],
+            geometry: "yes",
+            volume: 3000,
+            eco: 70,
+            shrinkage: 1.5,
+            suitableUAVs: ["fixed-wing", "single-rotor", "hybrid"]
+        }
+    };
+
+    // Расчёт БПЛА
+    function calculateBPLA() {
+        const uavType = document.getElementById('uav-type').value;
+        const selectedMaterials = Array.from(document.querySelectorAll('input[name="materials"]:checked')).map(input => input.value);
+
+        const time = parseFloat(document.getElementById('time_bpla').value);
+        const cost = parseFloat(document.getElementById('cost_bpla').value);
+        const itemCost = parseFloat(document.getElementById('item-cost_bpla').value);
+        const setupTime = parseFloat(document.getElementById('setup-time_bpla').value);
+        const geometry = document.getElementById('geometry_bpla').value;
+        const shrinkage = parseFloat(document.getElementById('shrinkage_bpla').value);
+        const accuracy = parseFloat(document.getElementById('accuracy_bpla').value);
+        const eco = parseFloat(document.getElementById('eco_bpla').value);
+        const volume = parseFloat(document.getElementById('volume_bpla').value);
+
+        if (!time || !cost || !itemCost || !setupTime || !shrinkage || !accuracy || !eco || !volume || selectedMaterials.length === 0) {
+            document.getElementById('error_bpla').textContent = 'Заполните все поля и выберите хотя бы один материал.';
+            return;
+        } else {
+            document.getElementById('error_bpla').textContent = '';
+        }
+
+        const userInput = { time, cost, itemCost, setupTime, materials: selectedMaterials, geometry, shrinkage, accuracy, eco, volume };
+        const resultDiv = document.getElementById('result_bpla');
+        const methodP = document.getElementById('method_bpla');
+        const reasonP = document.getElementById('reason_bpla');
+        const efficiencyP = document.getElementById('efficiency_bpla');
+
+        // Нормализация числовых значений
+        const maxValues = {
+            time: Math.max(...Object.values(methods).map(m => m.time), userInput.time),
+            cost: Math.max(...Object.values(methods).map(m => m.cost), userInput.cost),
+            itemCost: Math.max(...Object.values(methods).map(m => m.itemCost), userInput.itemCost),
+            setupTime: Math.max(...Object.values(methods).map(m => m.setupTime), userInput.setupTime),
+            shrinkage: Math.max(...Object.values(methods).map(m => m.shrinkage), userInput.shrinkage),
+            accuracy: Math.max(...Object.values(methods).map(m => m.accuracy), userInput.accuracy),
+            eco: Math.max(...Object.values(methods).map(m => m.eco), userInput.eco),
+            volume: Math.max(...Object.values(methods).map(m => m.volume), userInput.volume)
+        };
+
+        function calculateScore(method, user, matching) {
+            let score = 0;
+            score += (1 - method.accuracy / maxValues.accuracy) * (user.accuracy / maxValues.accuracy);
+            score += (1 - method.cost / maxValues.cost) * (user.cost / maxValues.cost);
+            score += (1 - method.itemCost / maxValues.itemCost) * (user.itemCost / maxValues.itemCost);
+            score += (1 - method.time / maxValues.time) * (user.time / maxValues.time);
+            score += (matching.length / user.materials.length);
+            score += (method.geometry === user.geometry ? 1 : 0) * (user.geometry === "yes" ? 1 : 0.5);
+            score += (method.volume / maxValues.volume) * (user.volume / maxValues.volume);
+            score += (1 - method.shrinkage / maxValues.shrinkage) * (user.shrinkage / maxValues.shrinkage);
+            score += (method.eco / maxValues.eco) * (user.eco / maxValues.eco);
+            score += (1 - method.shrinkage / maxValues.shrinkage) * (user.shrinkage / maxValues.shrinkage);
+            return score;
+        }
+
+        let bestMethod = null;
+        let bestScore = -1;
+        let reason = '', efficiencyText = '';
+
+        // Проверка одного метода
+        for (const [methodName, method] of Object.entries(methods)) {
+            if (!method.suitableUAVs.includes(uavType)) continue;
+            const matched = method.materials.filter(m => selectedMaterials.includes(m));
+            if (matched.length !== selectedMaterials.length) continue;
+
+            const score = calculateScore(method, userInput, matched);
+            if (score > bestScore) {
+                bestScore = score;
+                bestMethod = method;
+                reason = `Подходит для всех материалов: ${matched.join(', ')}`;
+                efficiencyText = `Эффективность: ${score.toFixed(4)}`;
+            }
+        }
+
+        if (bestMethod) {
+            methodP.textContent = bestMethod.name;
+            reasonP.innerHTML = `
+                Выбран, так как:<br>
+                • Поддерживает все материалы: ${reason.split(':')[1].trim()}<br>
+                • Обеспечивает точность ±${bestMethod.accuracy} мм<br>
+                • Укладывается в бюджет: до ${bestMethod.cost} ₽<br>
+                • Низкая стоимость одной детали: до ${bestMethod.itemCost} ₽<br>
+                • Срок изготовления: до ${bestMethod.time} дней<br>
+                • Поддерживает сложную геометрию<br>
+                • Объем производства: до ${bestMethod.volume} шт.<br>
+                • Экологичность: ${bestMethod.eco}%<br>
+                • Усадка: до ${bestMethod.shrinkage}%`;
+            efficiencyP.textContent = efficiencyText;
+            resultDiv.classList.remove('hidden');
+            return;
+        }
+
+        // Проверка комбинации двух методов для несовместимых материалов
+        let bestMethods = [];
+        let bestCombinedScore = -1;
+
+        for (const [m1, method1] of Object.entries(methods)) {
+            if (!method1.suitableUAVs.includes(uavType)) continue;
+            const mat1 = method1.materials.filter(m => selectedMaterials.includes(m));
+            if (mat1.length === 0) continue;
+
+            for (const [m2, method2] of Object.entries(methods)) {
+                if (m1 === m2 || !method2.suitableUAVs.includes(uavType)) continue;
+                const mat2 = method2.materials.filter(m => selectedMaterials.includes(m));
+                if (mat2.length === 0) continue;
+
+                const combinedMats = [...new Set([...mat1, ...mat2])];
+                if (combinedMats.length === selectedMaterials.length) {
+                    const s1 = calculateScore(method1, userInput, mat1);
+                    const s2 = calculateScore(method2, userInput, mat2);
+                    const avgScore = (s1 + s2) / 2;
+                    if (avgScore > bestCombinedScore) {
+                        bestCombinedScore = avgScore;
+                        bestMethods = [
+                            { method: method1, mats: mat1, score: s1 },
+                            { method: method2, mats: mat2, score: s2 }
+                        ];
+                    }
+                }
+            }
+        }
+
+        if (bestMethods.length > 0) {
+            methodP.textContent = `${bestMethods[0].method.name} и ${bestMethods[1].method.name}`;
+            reasonP.innerHTML = `
+                Выбраны два метода из-за несовместимости материалов:<br>
+                • ${bestMethods[0].method.name} поддерживает материалы: ${bestMethods[0].mats.join(', ')} (Эффективность: ${bestMethods[0].score.toFixed(4)})<br>
+                • ${bestMethods[1].method.name} поддерживает материалы: ${bestMethods[1].mats.join(', ')} (Эффективность: ${bestMethods[1].score.toFixed(4)})<br>
+                • Совместно обеспечивают:<br>
+                &nbsp;&nbsp;- Точность: ±${Math.min(bestMethods[0].method.accuracy, bestMethods[1].method.accuracy)} мм<br>
+                &nbsp;&nbsp;- Бюджет: до ${Math.max(bestMethods[0].method.cost, bestMethods[1].method.cost)} ₽<br>
+                &nbsp;&nbsp;- Стоимость одной детали: до ${Math.max(bestMethods[0].method.itemCost, bestMethods[1].method.itemCost)} ₽<br>
+                &nbsp;&nbsp;- Срок изготовления: до ${Math.max(bestMethods[0].method.time, bestMethods[1].method.time)} дней<br>
+                &nbsp;&nbsp;- Объем производства: до ${Math.min(bestMethods[0].method.volume, bestMethods[1].method.volume)} шт.<br>
+                &nbsp;&nbsp;- Экологичность: ${Math.max(bestMethods[0].method.eco, bestMethods[1].method.eco)}%<br>
+                &nbsp;&nbsp;- Усадка: до ${Math.max(bestMethods[0].method.shrinkage, bestMethods[1].method.shrinkage)}%`;
+            efficiencyP.textContent = `Средняя эффективность: ${bestCombinedScore.toFixed(4)}`;
+            resultDiv.classList.remove('hidden');
+            return;
+        }
+
+        methodP.textContent = 'Ошибка: Подходящий метод не найден';
+        reasonP.textContent = 'Выбранные материалы несовместимы или не поддерживаются ни одним методом для данного типа БПЛА.';
+        efficiencyP.textContent = '';
+        resultDiv.classList.remove('hidden');
+    }
+</script>
+
+</body>
+</html>
